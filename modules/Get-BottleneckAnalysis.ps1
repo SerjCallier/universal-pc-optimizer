@@ -23,8 +23,54 @@ function Invoke-BottleneckAnalysis {
     $concerns = @()
     $diag     = $Global:SystemData.Diagnostics
 
+    # -- 4.0  GPU y adaptadores graficos ---------------------------------------
+    Show-ProgressStep -Current 1 -Total 9 -Label "Detectando adaptadores graficos..."
+
+    try {
+        $gpus = Get-WmiObject -Class Win32_VideoController -ErrorAction Stop
+        $gpuList         = @()
+        $hasDedicatedGpu = $false
+
+        foreach ($gpu in $gpus) {
+            $gpuName = $gpu.Name.Trim()
+            $gpuRamMB = 0
+            if ($gpu.AdapterRAM -and $gpu.AdapterRAM -gt 0) {
+                $gpuRamMB = [Math]::Round($gpu.AdapterRAM / 1MB, 0)
+            }
+            $gpuDriver   = $gpu.DriverVersion
+            $isDedicated = $gpuName -match "NVIDIA|GeForce|RTX|GTX|Quadro|AMD Radeon RX"
+            $gpuType     = "Integrada"
+            if ($isDedicated) {
+                $gpuType         = "Dedicada"
+                $hasDedicatedGpu = $true
+            }
+            $gpuList += @{ Name = $gpuName; Type = $gpuType; RamMB = $gpuRamMB; Driver = $gpuDriver }
+            Add-TechLog ("GPU: {0} | Tipo: {1} | VRAM: {2} MB | Driver: {3}" -f $gpuName, $gpuType, $gpuRamMB, $gpuDriver)
+        }
+
+        $data.GpuList         = $gpuList
+        $data.HasDedicatedGpu = $hasDedicatedGpu
+
+        if ($gpuList.Count -gt 0) {
+            $gpuSummary = ($gpuList | ForEach-Object { "$($_.Name) ($($_.Type))" }) -join ", "
+            $goodNews += "GPU(s) detectada(s): $gpuSummary"
+        }
+
+        if ($Global:UserProfile.PrimaryUse -eq "Gaming" -and -not $hasDedicatedGpu) {
+            $concerns += "Perfil Gaming detectado pero solo GPU integrada encontrada. Los juegos exigentes requieren GPU dedicada."
+            Add-Finding -Category "GPU" `
+                -Issue "Perfil Gaming con solo GPU integrada" `
+                -Recommendation "Para gaming fluido se requiere GPU dedicada (NVIDIA GeForce o AMD Radeon RX). Considera una notebook gaming o una PC de escritorio con GPU dedicada." `
+                -Severity "Medio" -ScorePenalty 10
+        }
+    } catch {
+        Add-TechLog "Error detectando GPU: $_"
+        $data.GpuList         = @()
+        $data.HasDedicatedGpu = $false
+    }
+
     # -- 4.1  Throttling termico -----------------------------------------------
-    Show-ProgressStep -Current 1 -Total 8 -Label "Verificando throttling termico..."
+    Show-ProgressStep -Current 2 -Total 9 -Label "Verificando throttling termico..."
 
     try {
         $cpu = Get-WmiObject Win32_Processor -ErrorAction Stop | Select-Object -First 1
@@ -48,7 +94,7 @@ function Invoke-BottleneckAnalysis {
     }
 
     # -- 4.2  Temperatura en reposo ---------------------------------------------
-    Show-ProgressStep -Current 2 -Total 8 -Label "Evaluando temperatura en reposo..."
+    Show-ProgressStep -Current 3 -Total 9 -Label "Evaluando temperatura en reposo..."
 
     $tempC   = if ($diag -and $diag.ContainsKey('CpuTempC')) { $diag.CpuTempC } else { $null }
     $cpuLoad = if ($diag -and $diag.ContainsKey('CpuLoad') -and $diag.CpuLoad -ne $null) { $diag.CpuLoad } else { 50 }
@@ -63,7 +109,7 @@ function Invoke-BottleneckAnalysis {
     }
 
     # -- 4.3  RAM limitante ----------------------------------------------------
-    Show-ProgressStep -Current 3 -Total 8 -Label "Evaluando memoria RAM..."
+    Show-ProgressStep -Current 4 -Total 9 -Label "Evaluando memoria RAM..."
 
     $ramTotalMB = if ($diag -and $diag.ContainsKey('RamTotalMB') -and $diag.RamTotalMB) { $diag.RamTotalMB } else { 0 }
     $slotsUsed  = if ($diag -and $diag.ContainsKey('RamSlotsUsed')  -and $diag.RamSlotsUsed)  { $diag.RamSlotsUsed  } else { 0 }
@@ -89,7 +135,7 @@ function Invoke-BottleneckAnalysis {
     }
 
     # -- 4.4  Disco HDD + fragmentacion ----------------------------------------
-    Show-ProgressStep -Current 4 -Total 8 -Label "Verificando tipo de disco y fragmentacion..."
+    Show-ProgressStep -Current 5 -Total 9 -Label "Verificando tipo de disco y fragmentacion..."
 
     $diagDisks  = if ($diag -and $diag.ContainsKey('Disks')) { $diag.Disks } else { @() }
     $hasHDD     = ($diagDisks | Where-Object { $_.MediaType -eq "HDD" } | Measure-Object).Count -gt 0
@@ -126,7 +172,7 @@ function Invoke-BottleneckAnalysis {
     }
 
     # -- 4.5  Degradacion de bateria -------------------------------------------
-    Show-ProgressStep -Current 5 -Total 8 -Label "Re-verificando salud de bateria..."
+    Show-ProgressStep -Current 6 -Total 9 -Label "Re-verificando salud de bateria..."
 
     $battHealth = if ($diag -and $diag.ContainsKey('BatteryHealthPct')) { $diag.BatteryHealthPct } else { $null }
     if ($battHealth) {
@@ -145,7 +191,7 @@ function Invoke-BottleneckAnalysis {
     }
 
     # -- 4.6  Procesos con alto consumo sostenido -------------------------------
-    Show-ProgressStep -Current 6 -Total 8 -Label "Buscando procesos que consumen muchos recursos..."
+    Show-ProgressStep -Current 7 -Total 9 -Label "Buscando procesos que consumen muchos recursos..."
 
     try {
         # Medir CPU 2 veces con 2s de intervalo para obtener uso real
@@ -194,7 +240,7 @@ function Invoke-BottleneckAnalysis {
     }
 
     # -- 4.7  Version de Windows ------------------------------------------------
-    Show-ProgressStep -Current 7 -Total 8 -Label "Verificando version de Windows..."
+    Show-ProgressStep -Current 8 -Total 9 -Label "Verificando version de Windows..."
 
     try {
         $osVersion = [System.Environment]::OSVersion.Version
@@ -226,7 +272,7 @@ function Invoke-BottleneckAnalysis {
     }
 
     # -- 4.8  Numero de procesos activos ---------------------------------------
-    Show-ProgressStep -Current 8 -Total 8 -Label "Contando procesos activos..."
+    Show-ProgressStep -Current 9 -Total 9 -Label "Contando procesos activos..."
 
     $procCount = (Get-Process -ErrorAction SilentlyContinue | Measure-Object).Count
     $data.ProcessCount = $procCount

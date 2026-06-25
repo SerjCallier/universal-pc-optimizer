@@ -20,6 +20,7 @@ $ScriptFullPath = if ($PSCommandPath) {
     Join-Path (Get-Location).Path "main.ps1"
 }
 $ScriptDir = Split-Path -Parent $ScriptFullPath
+$Global:ScriptDir = $ScriptDir   # accesible desde todos los modulos
 
 # ── Manejador global de errores: pausa antes de cerrar en cualquier excepcion ─
 trap {
@@ -39,16 +40,28 @@ $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIden
 if (-not $isAdmin) {
     Write-Host ""
     Write-Host "  Este programa necesita permisos de administrador." -ForegroundColor Yellow
-    Write-Host "  Se abrira una nueva ventana solicitando confirmacion..." -ForegroundColor Yellow
+    Write-Host "  Solicitando elevacion UAC..." -ForegroundColor Yellow
     Write-Host ""
-    Start-Sleep -Seconds 1
-    # Preservar el flag -Console en la re-elevacion
+    Start-Sleep -Milliseconds 500
     $consoleFlag = if ($Console) { " -Console" } else { "" }
-    Start-Process -FilePath "powershell.exe" `
-        -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$ScriptFullPath`"$consoleFlag" `
-        -Verb RunAs `
-        -WorkingDirectory $ScriptDir
-    exit
+    try {
+        Start-Process -FilePath "powershell.exe" `
+            -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$ScriptFullPath`"$consoleFlag" `
+            -Verb RunAs `
+            -WorkingDirectory $ScriptDir `
+            -ErrorAction Stop
+        exit
+    } catch {
+        # Fallo la elevacion UAC automatica (puede pasar en OneDrive, terminales restringidas, etc.)
+        Write-Host ""
+        Write-Host "  No se pudo elevar automaticamente." -ForegroundColor Red
+        Write-Host "  Por favor ejecuta el archivo 'Ejecutar como Administrador.bat'" -ForegroundColor Yellow
+        Write-Host "  con click derecho -> 'Ejecutar como administrador'." -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "  Presiona ENTER para cerrar..." -ForegroundColor DarkGray
+        Read-Host | Out-Null
+        exit 1
+    }
 }
 
 # ── Configurar consola ────────────────────────────────────────────────────────
@@ -74,6 +87,7 @@ if (-not (Test-Path $ModulesPath)) {
 $baseModules = @(
     "Helper-Functions.ps1",
     "Show-UserInterface.ps1",
+    "Get-UserProfile.ps1",
     "Get-SystemDiagnostics.ps1",
     "Invoke-SystemCleanup.ps1",
     "Get-AppAndPowerAnalysis.ps1",
@@ -133,18 +147,23 @@ if ($Global:UI -and -not $Global:UI.Form.IsDisposed) {
     Set-UITitle -Title "Bienvenido al Optimizador Universal" `
                 -Desc  "Diagnostico y optimizacion de notebooks Windows 10/11"
     Set-UIProgress -Percent 0 -StatusText "Listo para comenzar."
-    Add-UILog "Bienvenido! Este programa realizara las siguientes etapas:" ([System.Drawing.Color]::FromArgb(80, 195, 225))
+    Add-UILog "Bienvenido! Este programa realizara los siguientes pasos:" ([System.Drawing.Color]::FromArgb(80, 195, 225))
+    Add-UILog "  0. Orientacion: 3 preguntas para personalizar el analisis" ([System.Drawing.Color]::FromArgb(160, 180, 200))
     Add-UILog "  1. Diagnostico del sistema (CPU, RAM, disco, bateria, WiFi)" ([System.Drawing.Color]::FromArgb(160, 180, 200))
     Add-UILog "  2. Limpieza de archivos temporales y cache" ([System.Drawing.Color]::FromArgb(160, 180, 200))
     Add-UILog "  3. Revision de aplicaciones y plan de energia" ([System.Drawing.Color]::FromArgb(160, 180, 200))
     Add-UILog "  4. Identificacion de cuellos de botella" ([System.Drawing.Color]::FromArgb(160, 180, 200))
-    Add-UILog "  5. Reporte final con recomendaciones en tu Escritorio" ([System.Drawing.Color]::FromArgb(160, 180, 200))
+    Add-UILog "  5. Reporte personalizado con plan de accion en 3 horizontes" ([System.Drawing.Color]::FromArgb(160, 180, 200))
     Add-UILog "" ([System.Drawing.Color]::White)
     Add-UILog "Presiona 'Siguiente' para comenzar." ([System.Drawing.Color]::FromArgb(80, 195, 225))
     Wait-UINext -Label "Comenzar >>"
 } else {
     Show-WelcomeBanner
 }
+
+# ── Etapa 0: Perfil de usuario ───────────────────────────────────────────────
+Invoke-UserProfile
+if ($Global:UI -and -not $Global:UI.Form.IsDisposed) { Wait-UINext }
 
 # ── Etapa 1: Diagnostico ──────────────────────────────────────────────────────
 $runDiag = Confirm-ModuleSkip `

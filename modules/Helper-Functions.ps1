@@ -12,6 +12,11 @@ $Global:Findings     = [System.Collections.Generic.List[hashtable]]::new()
 $Global:HealthScore  = 100          # Comienza perfecto; modulos lo reducen
 $Global:BeforeState  = @{}          # Instantanea antes de la limpieza
 $Global:AfterState   = @{}          # Instantanea despues de la limpieza
+$Global:UserProfile  = @{           # Perfil del usuario (Paso 0)
+    TechLevel   = "Basico"
+    PrimaryUse  = "General"
+    MainConcern = "General"
+}
 
 # ---------------------------------------------------------------------------
 # Write-Color : imprime texto con color sin perder el newline

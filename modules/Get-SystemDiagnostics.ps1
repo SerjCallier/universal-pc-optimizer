@@ -14,8 +14,45 @@ function Invoke-SystemDiagnostics {
     $goodNews = @()
     $concerns = @()
 
+    # -- 1.0  Identidad del equipo (Marca, Modelo, Serial, OS) ----------------
+    Show-ProgressStep -Current 1 -Total 8 -Label "Identificando el equipo..."
+
+    try {
+        $cs  = Get-WmiObject -Class Win32_ComputerSystem -ErrorAction SilentlyContinue | Select-Object -First 1
+        $csp = Get-WmiObject -Class Win32_ComputerSystemProduct -ErrorAction SilentlyContinue | Select-Object -First 1
+        $osi = Get-WmiObject -Class Win32_OperatingSystem -ErrorAction SilentlyContinue | Select-Object -First 1
+
+        $data.MachineMake  = if ($cs -and $cs.Manufacturer) { $cs.Manufacturer.Trim() } else { "Desconocido" }
+        $data.MachineModel = if ($cs -and $cs.Model)        { $cs.Model.Trim()        } else { "Desconocido" }
+
+        $serial = if ($csp -and $csp.IdentifyingNumber) { $csp.IdentifyingNumber.Trim() } else { "" }
+        $placeholders = @("To Be Filled By O.E.M.", "Default string", "None", "N/A", "")
+        if ($serial -in $placeholders) {
+            $serial = if ($csp -and $csp.UUID) { $csp.UUID } else { "No disponible" }
+        }
+        $data.MachineSerial = $serial
+
+        $data.OsName        = if ($osi -and $osi.Caption)     { $osi.Caption.Trim() } else { "No disponible" }
+        $data.OsBuild       = if ($osi -and $osi.BuildNumber) { $osi.BuildNumber     } else { "?" }
+        $data.OsInstallDate = if ($osi -and $osi.InstallDate) {
+            $osi.ConvertToDateTime($osi.InstallDate).ToString("dd/MM/yyyy")
+        } else { "No disponible" }
+
+        Add-TechLog ("Equipo: {0} {1} | Serial: {2}" -f $data.MachineMake, $data.MachineModel, $data.MachineSerial)
+        Add-TechLog ("OS: {0} | Build: {1} | Instalado: {2}" -f $data.OsName, $data.OsBuild, $data.OsInstallDate)
+        Write-Color ("  Equipo detectado: {0} {1}" -f $data.MachineMake, $data.MachineModel) -Color Cyan
+    } catch {
+        Add-TechLog "ERROR leyendo identidad del equipo: $_"
+        $data.MachineMake   = "No disponible"
+        $data.MachineModel  = "No disponible"
+        $data.MachineSerial = "No disponible"
+        $data.OsName        = "No disponible"
+        $data.OsBuild       = "?"
+        $data.OsInstallDate = "No disponible"
+    }
+
     # -- 1.1  CPU ------------------------------------------------------------
-    Show-ProgressStep -Current 1 -Total 7 -Label "Analizando procesador (CPU)..."
+    Show-ProgressStep -Current 2 -Total 8 -Label "Analizando procesador (CPU)..."
 
     try {
         $cpu = Get-WmiObject -Class Win32_Processor -ErrorAction Stop | Select-Object -First 1
@@ -48,7 +85,7 @@ function Invoke-SystemDiagnostics {
     }
 
     # -- 1.2  Temperatura CPU -------------------------------------------------
-    Show-ProgressStep -Current 2 -Total 7 -Label "Leyendo temperatura..."
+    Show-ProgressStep -Current 3 -Total 8 -Label "Leyendo temperatura..."
 
     try {
         $tempZones = Get-WmiObject -Namespace "root/wmi" `
@@ -86,7 +123,7 @@ function Invoke-SystemDiagnostics {
     }
 
     # -- 1.3  RAM -------------------------------------------------------------
-    Show-ProgressStep -Current 3 -Total 7 -Label "Analizando memoria RAM..."
+    Show-ProgressStep -Current 4 -Total 8 -Label "Analizando memoria RAM..."
 
     try {
         $os = Get-WmiObject -Class Win32_OperatingSystem -ErrorAction Stop
@@ -145,7 +182,7 @@ function Invoke-SystemDiagnostics {
     }
 
     # -- 1.4  Bateria ----------------------------------------------------------
-    Show-ProgressStep -Current 4 -Total 7 -Label "Revisando bateria..."
+    Show-ProgressStep -Current 5 -Total 8 -Label "Revisando bateria..."
 
     try {
         $bat = Get-WmiObject -Class Win32_Battery -ErrorAction Stop | Select-Object -First 1
@@ -204,7 +241,7 @@ function Invoke-SystemDiagnostics {
     }
 
     # -- 1.5  Disco ------------------------------------------------------------
-    Show-ProgressStep -Current 5 -Total 7 -Label "Revisando disco y almacenamiento..."
+    Show-ProgressStep -Current 6 -Total 8 -Label "Revisando disco y almacenamiento..."
 
     try {
         $disks = Get-PhysicalDisk -ErrorAction Stop
@@ -278,7 +315,7 @@ function Invoke-SystemDiagnostics {
     }
 
     # -- 1.6  Red / WiFi -------------------------------------------------------
-    Show-ProgressStep -Current 6 -Total 7 -Label "Revisando conectividad de red..."
+    Show-ProgressStep -Current 7 -Total 8 -Label "Revisando conectividad de red..."
 
     try {
         $wlanOutput = & netsh wlan show interfaces 2>$null
@@ -329,7 +366,7 @@ function Invoke-SystemDiagnostics {
     }
 
     # -- 1.7  Snapshot BeforeState ---------------------------------------------
-    Show-ProgressStep -Current 7 -Total 7 -Label "Guardando estado inicial..."
+    Show-ProgressStep -Current 8 -Total 8 -Label "Guardando estado inicial..."
 
     $Global:BeforeState.RamFreeMB    = $data.RamFreeMB
     $Global:BeforeState.RamUsedPct   = $data.RamUsedPct

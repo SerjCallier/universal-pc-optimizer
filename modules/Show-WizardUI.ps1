@@ -83,7 +83,7 @@ function Initialize-WizardUI {
 
     # Nombres de las etapas (sidebar)
     $stepNames = @(
-        "Bienvenida",
+        "Orientacion",
         "Diagnostico",
         "Limpieza",
         "Aplicaciones",
@@ -533,7 +533,7 @@ function Show-StageIntro {
         [string]$WhatItDoes
     )
     if ($Global:UI -and -not $Global:UI.Form.IsDisposed) {
-        Set-UIStep  -StepIndex ($StageNum - 1)
+        Set-UIStep  -StepIndex $StageNum
         Set-UITitle -Title ("ETAPA {0}/{1}: {2}" -f $StageNum, $TotalStages, $Title) -Desc $WhatItDoes
         Set-UIProgress -Percent 0 -StatusText ("Iniciando {0}..." -f $Title)
         Add-UILog ("--- ETAPA {0}: {1} ---" -f $StageNum, $Title) ([System.Drawing.Color]::FromArgb(0, 128, 190))
